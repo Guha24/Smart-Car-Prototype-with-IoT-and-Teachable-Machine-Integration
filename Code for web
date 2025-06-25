@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Teachable Machine Robot</title>
+  <style>
+    body{
+      background-color: rgba(26, 4, 224, 0.558);
+      z-index:10;
+    }
+    .display-screen{
+      display:flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+  
+    canvas{
+      display:flex;
+      flex-direction:row;
+      background-color: white;
+      z-index:5;
+      border-radius: 100px;
+    }
+    #webcam-container{
+      z-index:6;
+    }
+    
+    h1,#label{
+      font-size:35px;
+      font-family: cursive;
+      color:white;
+      z-index:3;
+    }
+    .floating-icons {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* So clicks go through */
+      z-index: 0;
+    }
+
+    .icon {
+      position: absolute;
+      width: 60px;
+      opacity: 0.15;
+      animation: float 10s infinite ease-in-out;
+    }
+
+@keyframes float {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+  </style>
+</head>
+<body>
+  <div class="display-screen">
+    <div><h1>Detected Command: <span id="label">None</span></h1></div>
+    <div id="webcam-container">
+      <video id="webcam" autoplay playsinline width="0" height="0"></video>    
+    </div>
+    <div class="floating-icons icon-container"></div>
+  </div>
+  
+  <!-- Load TensorFlow.js core library -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0"></script>
+
+  <!-- Load Teachable Machine Image library -->
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+  <script>
+    const URL = "model/";
+    const ESP32_IP = "http://192.168.29.195"; // 👈 Replace with your ESP32 local IP
+
+    let model, webcam;
+    const icons=["https://img.icons8.com/ios/100/robot-2.png",
+      "https://img.icons8.com/ios/100/controller.png",
+      "https://img.icons8.com/ios/100/wifi.png",
+      "https://img.icons8.com/ios/100/circuit.png"
+    ];
+    const container = document.querySelector('.icon-container');
+    for (let i = 0; i < 50; i++) {
+      const img = document.createElement("img");
+      img.src = icons[i % icons.length];
+      img.className = 'icon';
+      img.style.top = `${Math.random() * 100}%`;
+      img.style.left = `${Math.random() * 100}%`;
+      img.style.right= `${Math.random() * 100}%`;
+      img.style.animationDelay = `${Math.random() * 5}s`;
+      container.appendChild(img);
+    }
+    async function init() {
+      const modelURL ="model.json";
+      const metadataURL = "metadata.json";
+
+      model = await tmImage.load(modelURL, metadataURL);
+      webcam = new tmImage.Webcam(500, 500, true);
+      await webcam.setup();
+      await webcam.play();
+      document.getElementById("webcam-container").appendChild(webcam.canvas);
+      window.requestAnimationFrame(loop);
+    }
+
+    async function loop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const prediction = await model.predict(webcam.canvas);
+      let topPrediction = prediction.reduce((max, p) => p.probability > max.probability ? p : max);
+      const command = topPrediction.className;
+      document.getElementById("label").innerText = command;
+      sendCommand(command);
+    }
+
+    let lastCommand = "";
+    function sendCommand(cmd) {
+      if (cmd !== lastCommand) {
+        lastCommand = cmd;
+        fetch(`${ESP32_IP}/command?move=${cmd}`)
+          .then(() => console.log("Sent:", cmd))
+          .catch(err => console.error("Fetch error:", err));
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
+
